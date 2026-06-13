@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package ecode.v1;
+
+option go_package = "github.com/twtrubiks/grpc-governance-lab/api/proto/ecode/v1;ecodev1";
+
+// Error 是業務錯誤碼跨 gRPC 邊界的載體。
+//
+// pkg/ecode 把它夾進 grpc status 的 details 欄位:
+// server 端 ecode → status 時塞入,client 端 status → ecode 時取出,
+// 讓 -404 這類業務碼穿過網路後仍是 -404,而不是被壓扁成 codes.Unknown。
+message Error {
+  // 業務錯誤碼,負數採 HTTP 狀態碼取負的慣例(如 -404 資源不存在)。
+  int32 code = 1;
+  // 給人看的錯誤訊息,跨網路保持原樣。
+  string message = 2;
+}

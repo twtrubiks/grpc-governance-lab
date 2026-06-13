@@ -1,0 +1,10 @@
+# buf 模組設定:api/proto 下所有 .proto 受 lint 與 breaking 檢查。
+version: v2
+modules:
+  - path: api/proto
+lint:
+  use:
+    - STANDARD
+breaking:
+  use:
+    - FILE

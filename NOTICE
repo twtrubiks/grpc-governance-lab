@@ -1,0 +1,22 @@
+grpc-governance-lab
+Copyright 2026 twtrubiks
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Portions of this software are derived from go-kratos
+(https://github.com/go-kratos/kratos), Copyright go-kratos authors,
+licensed under the Apache License, Version 2.0.
+
+Specifically, the dynamic weighted-round-robin (WRR) load-balancing
+scoring logic in pkg/balancer/wrr — notably the score formula
+"sqrt(cs * ss^2 * 1e9 / (lag * cpu))" together with its cold-start
+clamps and the nginx-style smooth-WRR picker — is adapted from
+go-kratos' warden/selector WRR implementation. The surrounding code
+(rolling window, observability surface, gRPC base-balancer integration
+and tests) is an independent implementation.
+
+The remainder of this project is an independent reimplementation written
+after studying public material only (go-kratos documentation and source,
+the gRPC-Go official examples, Google Dapper / SRE publications, and the
+Netflix Eureka documentation). It contains no code copied from any
+non-public or unlicensed source.

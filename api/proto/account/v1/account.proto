@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package account.v1;
+
+option go_package = "github.com/twtrubiks/grpc-governance-lab/api/proto/account/v1;accountv1";
+
+// AccountService 提供使用者基本資料查詢(demo 業務,internal/account 實作)。
+service AccountService {
+  // GetUser 依 ID 查詢使用者;不存在時回業務碼 -404(經 status details 透傳)。
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+}
+
+// GetUserRequest 是 GetUser 的請求。
+message GetUserRequest {
+  // 使用者 ID。
+  int64 id = 1;
+}
+
+// GetUserResponse 是 GetUser 的回應。
+message GetUserResponse {
+  // 命中的使用者。
+  User user = 1;
+}
+
+// User 使用者基本資料。
+message User {
+  int64 id = 1;
+  string name = 2;
+}

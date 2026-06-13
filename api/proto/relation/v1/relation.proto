@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package relation.v1;
+
+option go_package = "github.com/twtrubiks/grpc-governance-lab/api/proto/relation/v1;relationv1";
+
+// RelationService 提供社交關係查詢(demo 業務,internal/relation 實作)。
+service RelationService {
+  // GetFollowerCount 查詢使用者的粉絲數;
+  // gateway 聚合時此服務失敗會被降級(粉絲數回 -1),不影響主資料。
+  rpc GetFollowerCount(GetFollowerCountRequest) returns (GetFollowerCountResponse);
+}
+
+// GetFollowerCountRequest 是 GetFollowerCount 的請求。
+message GetFollowerCountRequest {
+  // 使用者 ID。
+  int64 user_id = 1;
+}
+
+// GetFollowerCountResponse 是 GetFollowerCount 的回應。
+message GetFollowerCountResponse {
+  // 粉絲數。
+  int64 count = 1;
+}
