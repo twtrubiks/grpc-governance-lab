@@ -1,0 +1,28 @@
+# golangci-lint v2 設定。原則:少而嚴——每個啟用的 linter 都是真的會修的。
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck      # 不准吞錯(CODE_QUALITY.md §3)
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+    - misspell
+    - revive        # 含 exported 符號必須有註解的檢查
+  settings:
+    errcheck:
+      check-type-assertions: true
+    revive:
+      rules:
+        # exported 符號缺 godoc 註解會報錯(CODE_QUALITY.md §1)
+        - name: exported
+        - name: package-comments
+
+formatters:
+  enable:
+    - gofmt
+  settings:
+    gofmt:
+      simplify: true

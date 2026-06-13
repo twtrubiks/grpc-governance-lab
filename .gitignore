@@ -1,0 +1,18 @@
+# 編譯產物
+/bin/
+*.test
+# `go build ./cmd/X` 未加 -o 時會在根目錄留下這些 binary
+/discovery
+/demo
+/gateway
+
+# 測試與覆蓋率輸出
+coverage.out
+
+# 編輯器
+.idea/
+.vscode/
+*.swp
+
+# 環境
+.env

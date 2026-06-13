@@ -1,0 +1,87 @@
+# 一鍵起整套 demo:discovery + account×3 + relation + gateway。
+# 全部共用同一個映像,以 command 切換角色。
+#
+#   docker compose up --build
+#   curl 'http://localhost:8080/user/profile?id=1'
+#   curl 'http://localhost:8080/debug/backends'
+#
+# demo 劇本(六場景)見 README.md。account/relation 的 admin 埠映射到
+# host 9101~9104,供 chaos 腳本注入延遲/錯誤。
+
+x-demo-image: &demo-image
+  build:
+    context: .
+    dockerfile: Dockerfile
+
+services:
+  discovery:
+    <<: *demo-image
+    container_name: discovery
+    image: ggl-demo
+    command: ["/usr/local/bin/discovery", "-addr", ":7171"]
+    ports:
+      - "7171:7171" # 方便 host 直接看註冊狀態(/fetch /poll)
+
+  account1:
+    container_name: account1
+    image: ggl-demo
+    command: ["/usr/local/bin/demo", "-role", "account", "-addr", ":9000", "-advertise", "account1:9000", "-admin", ":9090", "-discovery", "http://discovery:7171"]
+    depends_on: [discovery]
+    ports:
+      - "9101:9090" # chaos admin
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grpc-health-probe", "-addr=:9000"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+
+  account2:
+    container_name: account2
+    image: ggl-demo
+    command: ["/usr/local/bin/demo", "-role", "account", "-addr", ":9000", "-advertise", "account2:9000", "-admin", ":9090", "-discovery", "http://discovery:7171"]
+    depends_on: [discovery]
+    ports:
+      - "9102:9090"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grpc-health-probe", "-addr=:9000"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+
+  account3:
+    container_name: account3
+    image: ggl-demo
+    command: ["/usr/local/bin/demo", "-role", "account", "-addr", ":9000", "-advertise", "account3:9000", "-admin", ":9090", "-discovery", "http://discovery:7171"]
+    depends_on: [discovery]
+    ports:
+      - "9103:9090"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grpc-health-probe", "-addr=:9000"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+
+  relation:
+    container_name: relation
+    image: ggl-demo
+    command: ["/usr/local/bin/demo", "-role", "relation", "-addr", ":9000", "-advertise", "relation:9000", "-admin", ":9090", "-discovery", "http://discovery:7171"]
+    depends_on: [discovery]
+    ports:
+      - "9104:9090"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grpc-health-probe", "-addr=:9000"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+
+  gateway:
+    container_name: gateway
+    image: ggl-demo
+    command: ["/usr/local/bin/gateway", "-addr", ":8080", "-discovery", "http://discovery:7171"]
+    depends_on:
+      account1: { condition: service_healthy }
+      account2: { condition: service_healthy }
+      account3: { condition: service_healthy }
+      relation: { condition: service_healthy }
+    ports:
+      - "8080:8080"
