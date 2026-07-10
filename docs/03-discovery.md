@@ -70,6 +70,20 @@ gateway 要呼叫 account 的 3 個副本,地址寫在哪?
 加回去(詐屍)。順序倒過來:確認心跳 goroutine 完全退出,
 再發 cancel。`TestDeregister_RemovesImmediately` 專門驗證這個。
 
+### 為什麼初次註冊失敗不能直接回錯誤
+
+心跳的「404 → 補註冊」只在心跳 goroutine 啟動後才存在;若
+`Register` 在初次失敗時直接回 `nil, err`,呼叫方多半只能 log 之後
+繼續跑,心跳沒啟動、沒有人補註冊,服務就**永久缺席服務發現**。
+這個競態真的踩得到:docker-compose 的 `depends_on` 只等容器啟動、
+不等 HTTP listener ready,demo 可能搶在 discovery 開始監聽前送出
+註冊請求。所以 `Register` 對暫時性失敗照樣回傳 Registration 並
+啟動心跳,心跳迴圈以指數退避(BackoffBase 起跳、BackoffMax 封頂,
+與 watcher 同一套節奏)重試到補註冊成功,才切回正常心跳週期——
+只補一拍不夠,註冊中心晚於退避起點才就緒的話,服務仍會缺席
+服務發現整整一個心跳週期(預設 30 秒)。只有 RequestErr
+(請求不合法,重試也不會成功)才回錯誤。
+
 ## 4. 踩過的坑
 
 - **長輪詢喚醒的不一定是你等的事件**:HTTP poll 測試裡,第一次
@@ -100,6 +114,8 @@ gateway 要呼叫 account 的 3 個副本,地址寫在哪?
 | 自保恢復後自動退出 | `TestGuard_RecoveryExitsProtection` |
 | 強制剔除天花板 | `TestRegistry_HardEvict` |
 | 心跳 404 自動重新註冊 | `TestHeartbeat_ReregistersAfterEviction` |
+| 初次註冊失敗 → 註冊中心就緒後補註冊 | `TestRegister_InitialFailureRecovered`(不合法請求則 fail fast:`TestRegister_InvalidRequestFailsFast`) |
+| 補註冊以退避重試直到成功,不等心跳週期 | `TestRegister_RetriesWithBackoffUntilRegistered` |
 | 註冊中心重啟後訂閱自動恢復 | `TestWatch_SurvivesServerRestart`(同位址重啟、版本重置) |
 
 跑法:`go test -race ./internal/discovery/ ./pkg/registry/`;

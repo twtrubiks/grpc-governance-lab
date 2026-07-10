@@ -131,6 +131,81 @@ func TestDeregister_RemovesImmediately(t *testing.T) {
 	}
 }
 
+// TestRegister_InitialFailureRecovered 驗證初次註冊失敗的自癒:
+// 註冊中心比服務晚就緒(docker-compose 的 depends_on 只等容器啟動、
+// 不等 HTTP listener ready)時,Register 照樣啟動心跳,
+// 待註冊中心可達後自動補註冊,而不是永久缺席服務發現。
+func TestRegister_InitialFailureRecovered(t *testing.T) {
+	// 先佔一個位址再放掉,拿到「還沒有註冊中心在聽」的位址
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := lis.Addr().String()
+	_ = lis.Close()
+
+	sdk := newSDK(addr)
+	r, err := sdk.Register(context.Background(), Instance{Service: "account", Addr: "10.0.0.1:9000"})
+	if err != nil {
+		t.Fatalf("暫時性註冊失敗不應回傳錯誤(心跳會補註冊),實際: %v", err)
+	}
+	t.Cleanup(func() { _ = r.Deregister(context.Background()) })
+
+	// 註冊中心「後來」才在同一位址啟動
+	_, reg, _ := startServer(t, addr)
+	waitFor(t, time.Second, func() bool { return serverCount(reg, "account") == 1 },
+		"註冊中心就緒後心跳應自動補註冊")
+}
+
+// TestRegister_RetriesWithBackoffUntilRegistered 驗證初次註冊失敗後
+// 以指數退避持續重試、直到補註冊成功,而不是只補一拍就退回心跳
+// 週期:心跳週期故意設得很長(10s),註冊中心等退避跑過數輪後才
+// 就緒——若補註冊只嘗試一次,本測試會等不到節點出現。
+func TestRegister_RetriesWithBackoffUntilRegistered(t *testing.T) {
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := lis.Addr().String()
+	_ = lis.Close()
+
+	sdk := New(Config{
+		Endpoint:          "http://" + addr,
+		HeartbeatInterval: 10 * time.Second, // 退回心跳週期 = 測試逾時
+		RequestTimeout:    time.Second,
+		PollTimeout:       time.Second,
+		BackoffBase:       10 * time.Millisecond,
+		BackoffMax:        50 * time.Millisecond,
+		Logger:            discardLogger(),
+	})
+	r, err := sdk.Register(context.Background(), Instance{Service: "account", Addr: "10.0.0.1:9000"})
+	if err != nil {
+		t.Fatalf("暫時性註冊失敗不應回傳錯誤: %v", err)
+	}
+	t.Cleanup(func() { _ = r.Deregister(context.Background()) })
+
+	// 讓退避跑過數輪(10+20+40+50ms...)之後註冊中心才就緒
+	time.Sleep(150 * time.Millisecond)
+	_, reg, _ := startServer(t, addr)
+	waitFor(t, 2*time.Second, func() bool { return serverCount(reg, "account") == 1 },
+		"退避重試應在註冊中心就緒後補註冊,不必等到心跳週期")
+}
+
+// TestRegister_InvalidRequestFailsFast 驗證請求不合法(缺必要欄位)
+// 時 Register 直接回錯誤——這種錯誤重試也不會成功,不該啟動心跳。
+func TestRegister_InvalidRequestFailsFast(t *testing.T) {
+	addr, _, _ := startServer(t, "")
+	sdk := newSDK(addr)
+
+	r, err := sdk.Register(context.Background(), Instance{Service: "account"}) // 缺 Addr
+	if err == nil {
+		t.Fatal("缺必要欄位應回錯誤,實際成功")
+	}
+	if r != nil {
+		t.Fatalf("回錯誤時不應回傳 Registration,實際: %+v", r)
+	}
+}
+
 // TestHeartbeat_ReregistersAfterEviction 驗證心跳 404 自動重新註冊:
 // 註冊中心單方面忘掉節點(剔除/重啟清空)後,節點自己回來。
 func TestHeartbeat_ReregistersAfterEviction(t *testing.T) {

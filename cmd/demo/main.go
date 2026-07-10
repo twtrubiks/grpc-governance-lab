@@ -94,7 +94,10 @@ func main() {
 	go func() { grpcErr <- srv.Serve(lis) }()
 	logger.Info("demo 服務啟動", "service", *serviceName, "advertise", *advertise, "admin", *adminAddr)
 
-	// 註冊到 discovery,啟動背景心跳
+	// 註冊到 discovery,啟動背景心跳。初次註冊失敗不致命:SDK 照樣
+	// 啟動心跳,在 discovery 就緒後自動補註冊(compose 啟動競態下
+	// demo 可能搶在 discovery 監聽前送出註冊)。這裡的錯誤只剩
+	// 「請求不合法」一種,重試不會成功,直接退出。
 	sdk := registry.New(registry.Config{Endpoint: *discoveryURL, Logger: logger})
 	reg, err := sdk.Register(context.Background(), registry.Instance{
 		Service: *serviceName,
@@ -102,8 +105,8 @@ func main() {
 		Addr:    *advertise,
 	})
 	if err != nil {
-		// 註冊失敗不致命:心跳會在 discovery 恢復後自動補註冊;先把服務跑起來
-		logger.Warn("初次註冊失敗,將由心跳重試", "error", err)
+		logger.Error("註冊請求不合法", "error", err)
+		os.Exit(1)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -117,13 +120,11 @@ func main() {
 
 	// 優雅下線:先向 discovery 註銷(SDK 內部會先停心跳再 cancel,
 	// 不會詐屍),讓 gateway 立刻把本節點移出,再停 gRPC
-	if reg != nil {
-		deregCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		if err := reg.Deregister(deregCtx); err != nil {
-			logger.Warn("註銷失敗", "error", err)
-		}
-		cancel()
+	deregCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	if err := reg.Deregister(deregCtx); err != nil {
+		logger.Warn("註銷失敗", "error", err)
 	}
+	cancel()
 	hs.SetServingStatus("", healthpb.HealthCheckResponse_NOT_SERVING)
 	srv.GracefulStop()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
