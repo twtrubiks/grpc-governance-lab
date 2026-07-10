@@ -110,6 +110,13 @@ DeadlineExceeded、ResourceExhausted)算節點故障**。業務錯誤
   公平參與下一輪(成熟框架同此思路)。
 - **全場無樣本不能動權重**:啟動瞬間誰都沒資料,若照算會把大家
   打成 1。對策:`scored == 0` 直接 return,維持靜態設定權重。
+- **滑動視窗閒置後吃掉新樣本**:advance 把跨桶數 clamp 到總桶數
+  後,若 lastStart 只前進一個視窗長(而非對齊到 now),節點閒置
+  超過兩個視窗(>6 秒沒流量)後,追上 now 之前的每次 advance 都
+  會再整窗全清——連上一筆剛寫入的新鮮樣本一起清掉,低流量節點
+  的統計持續失真。對策:整窗作廢時 lastStart 直接對齊到 now
+  (歷史全部作廢,游標沒有理由留在過去)。
+  `TestRollingWindow_IdleBeyondWindow` 驗證。
 - **測試不能等真實 3 秒視窗**:`core` 的時鐘可注入,滑動視窗與
   重算測試用假時鐘瞬間推進;e2e 則用 `RegisterWithConfig` 把視窗
   與重算週期縮到 50ms。

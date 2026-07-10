@@ -45,6 +45,31 @@ func TestRollingWindow_ExpiresOldBuckets(t *testing.T) {
 	}
 }
 
+// TestRollingWindow_IdleBeyondWindow 驗證閒置超過兩個視窗後,
+// 新樣本不會被 advance 誤清(regression:舊實作把跨桶數 clamp 到
+// 總桶數後 lastStart 只前進一個視窗長,追不上 now 的期間每次
+// advance 都會把剛寫入的樣本整窗清掉)。
+func TestRollingWindow_IdleBeyondWindow(t *testing.T) {
+	clk := newFakeClock()
+	w := newRollingWindow(10, 300*time.Millisecond, clk.now)
+
+	w.Add(100)
+	clk.add(6001 * time.Millisecond) // 閒置超過兩個完整視窗
+	w.Add(50)
+	sum, count := w.Value()
+	if sum != 50 || count != 1 {
+		t.Fatalf("閒置後的新樣本不該被清掉,得 sum=%d count=%d,want 50/1", sum, count)
+	}
+
+	// 之後在同一視窗內繼續累加也必須正常
+	clk.add(100 * time.Millisecond)
+	w.Add(30)
+	sum, count = w.Value()
+	if sum != 80 || count != 2 {
+		t.Fatalf("後續樣本應正常累加,得 sum=%d count=%d,want 80/2", sum, count)
+	}
+}
+
 // TestRollingWindow_PartialExpiry 驗證只過期跨過的桶,未跨過的保留。
 func TestRollingWindow_PartialExpiry(t *testing.T) {
 	clk := newFakeClock()
